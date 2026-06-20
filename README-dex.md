@@ -22,7 +22,9 @@ opens/manages/closes positions behind hard risk rails.
 | Discovery | `discovery/` | New PancakeSwap pairs + trending tokens (DexScreener) |
 | Screening | `safety/screener.py` | Honeypot/tax/liquidity gate — **fails closed** |
 | Intelligence | `intel/` | Whale/copy signals, on-chain flows, mempool watch, edge scoring |
-| Strategies | `strategies/` | momentum, meanrev, sniper, arbitrage, stablegrid |
+| CEX adapter | `cex/binance_adapter.py` | Binance public prices (no key) for hybrid CEX↔DEX |
+| Lending | `lending/venus.py` | Venus liquidation-shortfall monitor |
+| Strategies | `strategies/` | momentum, meanrev, sniper, arbitrage, stablegrid, crossarb, liquidation |
 | Risk | `risk/manager.py` | Size caps, daily loss stop, gas-vs-edge guard, kill switch |
 | Execution | `execution/` | `PaperExecutor` (sim) or `LiveExecutor` (signed swaps) |
 
@@ -34,6 +36,13 @@ opens/manages/closes positions behind hard risk rails.
 - **arbitrage** — Pancake-vs-Biswap price-gap **monitor**; only fires on a wide gap.
 - **stablegrid** — patient USDT/USDC peg arbitrage; idle until a real depeg makes
   the deviation exceed costs.
+- **crossarb** — hybrid CEX↔DEX. Uses Binance spot as an oracle: logs every CEX/DEX
+  gap and, when the DEX price lags meaningfully below Binance, buys on the DEX
+  expecting convergence (single-venue, executable). True two-legged transfer arb is
+  intentionally not attempted — transfer latency/fees kill it at $30.
+- **liquidation** — Venus (BSC) lending **monitor**: flags undercollateralized
+  borrowers. Does not fire at $30 (capturing a liquidation needs capital to repay
+  debt); wired so it can be enabled later with real capital.
 
 ## Quick start (paper, $0 cost)
 

@@ -197,5 +197,80 @@ def test_orchestrator_full_pipeline(monkeypatch):
     assert db.realized_pnl() > 0
 
 
+# --- hybrid CEX/DEX + lending ----------------------------------------------
+def test_binance_adapter_price_with_fake_client():
+    import types
+
+    from dex_trade_bot.cex.binance_adapter import BinanceAdapter
+
+    cfg = make_config()
+    adapter = BinanceAdapter(cfg, DummyLogger())
+    adapter.client = types.SimpleNamespace(
+        get_symbol_ticker=lambda symbol: {"price": "2.5"})
+    assert adapter.available
+    assert adapter.price("CAKEUSDT") == 2.5
+
+
+def test_crossarb_emits_intent_when_dex_lags(monkeypatch):
+    import types
+
+    import dex_trade_bot.strategies.crossarb_strategy as ca
+
+    cfg = make_config(CROSSARB_SYMBOLS=["CAKE"])
+    s = ca.Strategy(cfg, DummyLogger())
+    s.cex = types.SimpleNamespace(available=True, price=lambda sym: 2.0)        # CEX = 2.00
+    s.pancake = types.SimpleNamespace(quote_out=lambda a, b, amt, path=None: 1.9)  # DEX = 1.90
+    s.web3_client = types.SimpleNamespace(connected=True)
+    monkeypatch.setattr(ca.marketdata, "token_market", lambda addr: {"liquidity_usd": 80000})
+
+    intents = s.generate_open_intents([])
+    assert len(intents) == 1
+    assert intents[0].symbol == "CAKE"
+    assert intents[0].expected_edge_pct > 1.5  # ~5.3% lag
+
+
+def test_crossarb_silent_when_in_line(monkeypatch):
+    import types
+
+    import dex_trade_bot.strategies.crossarb_strategy as ca
+
+    cfg = make_config(CROSSARB_SYMBOLS=["CAKE"])
+    s = ca.Strategy(cfg, DummyLogger())
+    s.cex = types.SimpleNamespace(available=True, price=lambda sym: 1.905)  # ~in line
+    s.pancake = types.SimpleNamespace(quote_out=lambda a, b, amt, path=None: 1.9)
+    s.web3_client = types.SimpleNamespace(connected=True)
+    monkeypatch.setattr(ca.marketdata, "token_market", lambda addr: {"liquidity_usd": 80000})
+    assert s.generate_open_intents([]) == []
+
+
+def test_venus_shortfall_parsing():
+    import types
+
+    from dex_trade_bot.lending.venus import VenusMonitor
+
+    cfg = make_config(VENUS_WATCH_ACCOUNTS=["0xBorrower"])
+    call_obj = types.SimpleNamespace(call=lambda: (0, 0, int(5 * 1e18)))
+    fns = types.SimpleNamespace(getAccountLiquidity=lambda acct: call_obj)
+    contract = types.SimpleNamespace(functions=fns)
+    fake_web3 = types.SimpleNamespace(connected=True, contract=lambda a, abi: contract,
+                                      checksum=lambda a: a)
+    mon = VenusMonitor(fake_web3, cfg, DummyLogger())
+    assert mon.enabled
+    assert mon.account_shortfall_usd("0xBorrower") == 5.0
+    assert mon.scan()[0]["shortfall_usd"] == 5.0
+
+
+def test_liquidation_strategy_is_monitor_only():
+    import types
+
+    import dex_trade_bot.strategies.liquidation_strategy as lq
+
+    cfg = make_config()
+    s = lq.Strategy(cfg, DummyLogger())
+    s.venus = types.SimpleNamespace(
+        enabled=True, scan=lambda: [{"account": "0xa", "shortfall_usd": 100.0}])
+    assert s.generate_open_intents([]) == []  # never fires at $30
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

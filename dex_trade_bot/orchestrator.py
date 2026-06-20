@@ -13,9 +13,11 @@ job-per-concern style of binance_trade_bot/crypto_trading.py.
 import time
 from datetime import datetime
 
+from .cex.binance_adapter import BinanceAdapter
 from .dex import marketdata
 from .dex.aggregator import Aggregator
 from .execution import get_executor
+from .lending.venus import VenusMonitor
 from .execution.base import all_in_cost_pct
 from .intel import scoring
 from .intel.mempool import MempoolWatcher
@@ -40,6 +42,8 @@ class Orchestrator:
         self.whales = WhaleTracker(web3_client, config, logger)
         self.mempool = MempoolWatcher(config, logger)
         self.aggregator = Aggregator(web3_client, logger) if web3_client.connected else None
+        self.cex = BinanceAdapter(config, logger)
+        self.venus = VenusMonitor(web3_client, config, logger)
         self.executor = get_executor(config, web3_client, wallet, pancake, database, logger)
         self.strategies = load_enabled(config.ENABLED_STRATEGIES, config, logger)
         self._inject_dependencies()
@@ -62,6 +66,12 @@ class Orchestrator:
             if s.name == "stablegrid":
                 s.pancake = self.pancake
                 s.web3_client = self.web3_client
+            if s.name == "crossarb":
+                s.cex = self.cex
+                s.pancake = self.pancake
+                s.web3_client = self.web3_client
+            if s.name == "liquidation":
+                s.venus = self.venus
 
     # --- cash / accounting -------------------------------------------------
     def cash_usd(self):

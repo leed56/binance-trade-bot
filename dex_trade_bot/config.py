@@ -67,6 +67,18 @@ class Config:  # pylint: disable=too-many-instance-attributes
         self.WHALE_WATCHLIST = _get_list("WHALE_WATCHLIST", "")
         self.ENABLE_MEMPOOL_WATCH = _get_bool("ENABLE_MEMPOOL_WATCH", False)
 
+        # CEX (Binance) — optional; public prices need no keys, keys only for live CEX trades
+        self.BINANCE_API_KEY = _get("BINANCE_API_KEY", "")
+        self.BINANCE_API_SECRET = _get("BINANCE_API_SECRET", "")
+        self.BINANCE_TLD = _get("BINANCE_TLD", "com")
+        # Symbols (DEX-listed BSC tokens) to compare across CEX vs DEX for cross-venue arb
+        self.CROSSARB_SYMBOLS = _get_list("CROSSARB_SYMBOLS", "CAKE,ETH,XRP")
+        # Transfer/withdrawal cost assumption (%) used to gate cross-venue arb at small size
+        self.CROSS_VENUE_TRANSFER_COST_PCT = _get_float("CROSS_VENUE_TRANSFER_COST_PCT", 1.0)
+
+        # Lending / liquidations (Venus on BSC) — accounts to monitor for shortfall
+        self.VENUS_WATCH_ACCOUNTS = _get_list("VENUS_WATCH_ACCOUNTS", "")
+
         # Notifications
         self.APPRISE_URL = _get("APPRISE_URL", "")
 
