@@ -5,6 +5,9 @@
 __pycache__
 nohup.out
 user.cfg
+.env
+dex_trading.db
+dex_state/
 .idea/
 .vscode/
 .replit
