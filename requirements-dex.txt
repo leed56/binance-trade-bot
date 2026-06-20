@@ -9,3 +9,5 @@ python-dotenv==1.0.1
 sqlalchemy==1.4.15
 schedule==1.1.0
 apprise==0.9.5.1
+Flask==2.1.1
+Werkzeug==2.0.3

@@ -57,6 +57,18 @@ Paper mode needs no private key and no premium node — a free public BSC RPC an
 DexScreener are enough. It simulates fills with the same gas+tax+slippage cost
 model the live executor uses, so the paper PnL curve previews live behaviour.
 
+## PnL dashboard (see results in a browser)
+
+Run alongside the bot (it reads the same `dex_trading.db`):
+
+```bash
+python -m dex_trade_bot.dashboard      # then open http://127.0.0.1:8080
+```
+
+Shows total account value, realized PnL and return %, an auto-refreshing value
+chart, open positions and recent trades. Self-contained (no external assets, works
+offline). Port override: `DASHBOARD_PORT=8090`.
+
 ## Going live (only after reviewing paper results)
 
 Set `EXECUTION_MODE=live`, provide `PRIVATE_KEY`, and keep `MAX_POSITION_USD` small.

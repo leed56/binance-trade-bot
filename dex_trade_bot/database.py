@@ -89,3 +89,59 @@ class Database:
         cutoff = datetime.utcnow() - timedelta(hours=hours)
         with self.db_session() as session:
             session.query(Candidate).filter(Candidate.created_at < cutoff).delete()
+
+    # --- read helpers for the dashboard ------------------------------------
+    def pnl_series(self, limit=500):
+        from .models import PnLSnapshot
+
+        with self.db_session() as session:
+            rows = (
+                session.query(PnLSnapshot)
+                .order_by(PnLSnapshot.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            rows.reverse()  # chronological for charting
+            return [
+                {
+                    "t": r.created_at.isoformat(),
+                    "total": round(r.total_value_usd, 4),
+                    "cash": round(r.cash_usd, 4),
+                    "positions": round(r.positions_value_usd, 4),
+                    "realized": round(r.realized_pnl_usd, 4),
+                    "open": r.open_positions,
+                }
+                for r in rows
+            ]
+
+    def recent_trades(self, limit=50):
+        with self.db_session() as session:
+            rows = session.query(Trade).order_by(Trade.created_at.desc()).limit(limit).all()
+            return [
+                {
+                    "t": r.created_at.isoformat(),
+                    "symbol": r.symbol,
+                    "strategy": r.strategy,
+                    "side": r.side,
+                    "qty": r.qty,
+                    "price": r.price_usd,
+                    "value": round(r.value_usd, 4),
+                    "cost": round((r.gas_usd or 0) + (r.tax_usd or 0) + (r.slippage_usd or 0), 4),
+                    "mode": r.mode,
+                    "tx": r.tx_hash or "",
+                }
+                for r in rows
+            ]
+
+    def open_positions_view(self):
+        return [
+            {
+                "symbol": p.symbol,
+                "strategy": p.strategy,
+                "qty": p.qty,
+                "entry": p.entry_price_usd,
+                "cost_usd": round(p.cost_usd, 4),
+                "opened_at": p.opened_at.isoformat(),
+            }
+            for p in self.open_positions()
+        ]

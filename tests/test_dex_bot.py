@@ -272,5 +272,36 @@ def test_liquidation_strategy_is_monitor_only():
     assert s.generate_open_intents([]) == []  # never fires at $30
 
 
+# --- dashboard -------------------------------------------------------------
+def test_dashboard_endpoints(tmp_path):
+    from dex_trade_bot.dashboard import create_app
+    from dex_trade_bot.models import PnLSnapshot
+
+    db_file = tmp_path / "dash.db"
+    cfg = make_config(STARTING_BALANCE_USD=30)
+    cfg.DB_PATH = f"sqlite:///{db_file}"
+    db = make_db(cfg)
+    # seed a paper roundtrip + a couple of pnl snapshots
+    ex = PaperExecutor(cfg, web3_client=None, pancake=None, database=db, logger=DummyLogger())
+    ex.open_position({"token_address": "0xz", "symbol": "ZZZ"}, 5.0, 1.0, "momentum", 1_000_000, 0.0)
+    pos = db.get_open_position("0xz")
+    ex.close_position(pos, 1.3, 1_000_000, 0.0, "tp")
+    with db.db_session() as session:
+        session.add(PnLSnapshot(25.0, 5.0, db.realized_pnl(), 1))
+
+    app = create_app(cfg)
+    client = app.test_client()
+
+    s = client.get("/api/summary").get_json()
+    assert s["mode"] == "paper"
+    assert s["starting_balance"] == 30
+    assert "return_pct" in s
+
+    assert client.get("/api/pnl").status_code == 200
+    assert isinstance(client.get("/api/trades").get_json(), list)
+    assert len(client.get("/api/trades").get_json()) >= 2  # buy + sell
+    assert client.get("/").status_code == 200
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
