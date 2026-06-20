@@ -49,6 +49,11 @@ class Config:  # pylint: disable=too-many-instance-attributes
         # Execution
         self.EXECUTION_MODE = _get("EXECUTION_MODE", "paper").lower()
 
+        # Demo mode: loosen gates so paper trades fire quickly to SEE the mechanics.
+        # NOT realistic profit — for learning/observation only. Always paper-safe.
+        self.DEMO_MODE = _get_bool("DEMO_MODE", False)
+        self.DEMO_MAX_HOLD_MIN = _get_int("DEMO_MAX_HOLD_MIN", 3)
+
         # Risk limits
         self.STARTING_BALANCE_USD = _get_float("STARTING_BALANCE_USD", 30)
         self.MAX_POSITION_USD = _get_float("MAX_POSITION_USD", 5)
@@ -91,6 +96,11 @@ class Config:  # pylint: disable=too-many-instance-attributes
     @property
     def is_live(self) -> bool:
         return self.EXECUTION_MODE == "live"
+
+    @property
+    def demo_active(self) -> bool:
+        """Demo gates apply only in paper mode — never loosen risk on real funds."""
+        return self.DEMO_MODE and not self.is_live
 
     def validate(self):
         """Return a list of human-readable problems; empty list means OK."""

@@ -342,5 +342,29 @@ def test_selfcheck_flags_missing_wallet_as_not_ready(monkeypatch):
     assert ready is False  # missing wallet is a critical failure
 
 
+# --- demo mode -------------------------------------------------------------
+def test_demo_mode_bypasses_cost_gate_paper_only():
+    from dex_trade_bot.risk.manager import RiskManager
+
+    # Strict (default): a sub-cost edge is vetoed.
+    cfg = make_config()
+    db = make_db(cfg)
+    rm = RiskManager(cfg, db, DummyLogger())
+    cand = {"token_address": "0xstable", "symbol": "USDC"}
+    strict = rm.evaluate_open(cand, cash_usd=30, expected_edge_pct=0.26, est_cost_pct=4.0)
+    assert not strict.approved and "cost" in strict.reason
+
+    # Demo (paper): same sub-cost edge is approved with a real size.
+    cfg.DEMO_MODE = True
+    demo = rm.evaluate_open(cand, cash_usd=30, expected_edge_pct=0.26, est_cost_pct=4.0)
+    assert demo.approved and demo.size_usd > 0
+
+    # Demo must NEVER loosen anything in live mode.
+    cfg.EXECUTION_MODE = "live"
+    assert cfg.demo_active is False
+    live = rm.evaluate_open(cand, cash_usd=30, expected_edge_pct=0.26, est_cost_pct=4.0)
+    assert not live.approved
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
