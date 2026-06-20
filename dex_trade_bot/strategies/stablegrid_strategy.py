@@ -37,7 +37,8 @@ class Strategy(Strategy):  # noqa: F811
         if price is None or price <= 0:
             return []
         deviation = 1.0 - price  # positive when USDC is under peg
-        if deviation < ENTRY_DEVIATION:
+        entry_band = 0.0003 if self.config.demo_active else ENTRY_DEVIATION
+        if deviation < entry_band:
             return []  # within band: do nothing (the correct default)
 
         self.logger.info(f"[STABLEGRID] USDC at {price:.5f} (dev {deviation*100:.3f}%) -> peg entry")

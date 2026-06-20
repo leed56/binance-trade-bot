@@ -49,7 +49,8 @@ class Strategy(Strategy):  # noqa: F811
             self.logger.info(
                 f"[CROSSARB-MONITOR] {symbol}: CEX {cex_price:.6g} vs DEX {dex_price:.6g} "
                 f"(DEX lag {lag_pct:+.2f}%)")
-            if lag_pct < MIN_LAG_PCT:
+            min_lag = 0.2 if self.config.demo_active else MIN_LAG_PCT
+            if lag_pct < min_lag:
                 continue
             snap = marketdata.token_market(token) or {}
             liquidity = snap.get("liquidity_usd", 0) or 0

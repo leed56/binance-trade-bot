@@ -62,6 +62,14 @@ Paper mode needs no private key and no premium node — a free public BSC RPC an
 DexScreener are enough. It simulates fills with the same gas+tax+slippage cost
 model the live executor uses, so the paper PnL curve previews live behaviour.
 
+> **Want to watch a trade happen now?** By design the bot is patient and may sit
+> idle for hours at $30 (declining trades that don't beat costs — correct, but
+> boring to watch). Set `DEMO_MODE=true` in `.env` to loosen the gates so paper
+> trades fire within minutes and the dashboard fills in. It's **paper-only, zero
+> risk, and not realistic profit** — purely to see the buy/manage/sell mechanics.
+> Positions auto-close after `DEMO_MAX_HOLD_MIN` (default 3) minutes. Set it back
+> to `false` for the real, patient behaviour. Demo is ignored in live mode.
+
 ## Quick start — Windows (PowerShell)
 
 On Windows, `python`/`pip` only work after Python is installed, and you use the

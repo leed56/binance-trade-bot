@@ -11,6 +11,7 @@ These run as separate scheduled jobs (see __main__.py), mirroring the
 job-per-concern style of binance_trade_bot/crypto_trading.py.
 """
 import time
+from datetime import datetime
 
 from .cex.binance_adapter import BinanceAdapter
 from .dex import marketdata
@@ -154,6 +155,17 @@ class Orchestrator:
                 continue
             snapshot = marketdata.token_market(position.token_address)
             self._update_high_water(position, snapshot, strategy)
+
+            # Demo mode: auto-close after a short hold so the full open->close
+            # lifecycle is visible quickly (paper-only).
+            if self.config.demo_active:
+                age_min = (datetime.utcnow() - position.opened_at).total_seconds() / 60
+                if age_min >= self.config.DEMO_MAX_HOLD_MIN:
+                    price = strategy.reference_price(position, snapshot)
+                    liq = strategy.reference_liquidity(position, snapshot)
+                    self.executor.close_position(position, price, liq, 0.0,
+                                                 f"demo time-stop {age_min:.0f}m")
+                    continue
             try:
                 exit_now, reason = strategy.should_exit(position, snapshot or {})
             except Exception as e:  # pylint: disable=broad-except
