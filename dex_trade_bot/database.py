@@ -92,8 +92,6 @@ class Database:
 
     # --- read helpers for the dashboard ------------------------------------
     def pnl_series(self, limit=500):
-        from .models import PnLSnapshot
-
         with self.db_session() as session:
             rows = (
                 session.query(PnLSnapshot)

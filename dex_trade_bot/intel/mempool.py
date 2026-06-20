@@ -57,8 +57,6 @@ class MempoolWatcher:
                         break
 
         try:
-            import asyncio
-
             asyncio.new_event_loop().run_until_complete(listen())
         except Exception as e:  # pylint: disable=broad-except
             self.logger.warning(f"mempool watcher stopped: {e}")
