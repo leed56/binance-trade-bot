@@ -44,7 +44,7 @@ opens/manages/closes positions behind hard risk rails.
   borrowers. Does not fire at $30 (capturing a liquidation needs capital to repay
   debt); wired so it can be enabled later with real capital.
 
-## Quick start (paper, $0 cost)
+## Quick start — macOS / Linux (paper, $0 cost)
 
 ```bash
 pip install -r requirements-dex.txt
@@ -61,6 +61,43 @@ it first to confirm everything is reachable before trading.
 Paper mode needs no private key and no premium node — a free public BSC RPC and
 DexScreener are enough. It simulates fills with the same gas+tax+slippage cost
 model the live executor uses, so the paper PnL curve previews live behaviour.
+
+## Quick start — Windows (PowerShell)
+
+On Windows, `python`/`pip` only work after Python is installed, and you use the
+`py` launcher. The easiest path is the bundled scripts:
+
+```powershell
+# 1. Install Python once (if "python" opens the Microsoft Store, it's not installed):
+winget install Python.Python.3.12      # or download from https://python.org (tick "Add to PATH")
+
+# 2. From the repo folder, one-command setup (creates venv + installs deps + .env):
+./setup.ps1                            # if blocked: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+# 3. Set your wallet, then run:
+notepad .env                           # set WALLET_ADDRESS, keep EXECUTION_MODE=paper
+./run.ps1 --check                      # confirm everything is reachable
+./run.ps1                              # run the bot (paper mode)
+./run.ps1 dashboard                    # open http://127.0.0.1:8080
+```
+
+Prefer to do it by hand? The manual equivalent (note `py` and `py -m pip`, **not**
+bare `python`/`pip`):
+
+```powershell
+py -m venv venv
+.\venv\Scripts\Activate.ps1            # or just prefix commands with py -m
+py -m pip install -r requirements-dex.txt
+copy .env.example .env                 # set WALLET_ADDRESS
+py -m dex_trade_bot --check
+py -m dex_trade_bot
+py -m dex_trade_bot.dashboard
+```
+
+Windows gotchas: use the `py` launcher (bare `python` may hit the Store stub —
+disable it under *Settings > Apps > Advanced app settings > App execution
+aliases*); if activating the venv is blocked, run
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
 
 ## PnL dashboard (see results in a browser)
 
