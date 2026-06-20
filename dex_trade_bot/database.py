@@ -131,6 +131,31 @@ class Database:
                 for r in rows
             ]
 
+    def strategy_performance(self):
+        """Per-strategy realized stats from closed positions, best PnL first."""
+        with self.db_session() as session:
+            closed = (
+                session.query(Position)
+                .filter(Position.state == PositionState.CLOSED)
+                .all()
+            )
+            by_strategy = {}
+            for p in closed:
+                s = by_strategy.setdefault(
+                    p.strategy, {"strategy": p.strategy, "trades": 0, "wins": 0, "realized_pnl": 0.0}
+                )
+                s["trades"] += 1
+                s["realized_pnl"] += p.realized_pnl_usd or 0.0
+                if (p.realized_pnl_usd or 0.0) > 0:
+                    s["wins"] += 1
+            rows = []
+            for s in by_strategy.values():
+                s["realized_pnl"] = round(s["realized_pnl"], 4)
+                s["win_rate"] = round(s["wins"] / s["trades"] * 100, 1) if s["trades"] else 0.0
+                s["avg_pnl"] = round(s["realized_pnl"] / s["trades"], 4) if s["trades"] else 0.0
+                rows.append(s)
+            return sorted(rows, key=lambda r: r["realized_pnl"], reverse=True)
+
     def open_positions_view(self):
         return [
             {

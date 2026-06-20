@@ -59,6 +59,10 @@ def create_app(config=None):
     def trades():
         return jsonify(db.recent_trades())
 
+    @app.route("/api/strategies")
+    def strategies():
+        return jsonify(db.strategy_performance())
+
     @app.route("/")
     def index():
         return _PAGE
@@ -89,6 +93,8 @@ _PAGE = """<!doctype html>
  <div class="cards" id="cards"></div>
  <h2>Account value over time</h2>
  <svg id="chart" width="100%" height="180" viewBox="0 0 1000 180" preserveAspectRatio="none"></svg>
+ <h2>Strategy performance</h2>
+ <table id="strategies"><thead><tr><th>Strategy</th><th>Trades</th><th>Win rate</th><th>Avg PnL $</th><th>Realized PnL $</th></tr></thead><tbody></tbody></table>
  <h2>Open positions</h2>
  <table id="positions"><thead><tr><th>Symbol</th><th>Strategy</th><th>Qty</th><th>Entry</th><th>Cost $</th><th>Opened</th></tr></thead><tbody></tbody></table>
  <h2>Recent trades</h2>
@@ -109,6 +115,8 @@ async function refresh(){
   <div class="card"><div class="label">In positions</div><div class="val">$${f(s.positions_value)}</div></div>
   <div class="card"><div class="label">Open</div><div class="val">${s.open_positions}</div></div>`;
  const d=await j('/api/pnl');drawChart(d);
+ const st=await j('/api/strategies');
+ document.querySelector('#strategies tbody').innerHTML=st.map(r=>`<tr><td>${r.strategy}</td><td>${r.trades}</td><td>${f(r.win_rate)}%</td><td class="${cls(r.avg_pnl)}">${f(r.avg_pnl)}</td><td class="${cls(r.realized_pnl)}">${f(r.realized_pnl)}</td></tr>`).join('')||'<tr><td colspan=5 style="color:#7d8590">no closed trades yet</td></tr>';
  const p=await j('/api/positions');
  document.querySelector('#positions tbody').innerHTML=p.map(r=>`<tr><td>${r.symbol}</td><td>${r.strategy}</td><td>${f(r.qty)}</td><td>${f(r.entry)}</td><td>${f(r.cost_usd)}</td><td>${r.opened_at.slice(0,19).replace('T',' ')}</td></tr>`).join('')||'<tr><td colspan=6 style="color:#7d8590">none</td></tr>';
  const t=await j('/api/trades');

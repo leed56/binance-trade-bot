@@ -302,6 +302,15 @@ def test_dashboard_endpoints(tmp_path):
     assert len(client.get("/api/trades").get_json()) >= 2  # buy + sell
     assert client.get("/").status_code == 200
 
+    # per-strategy performance: the one closed momentum trade should appear
+    strat = client.get("/api/strategies").get_json()
+    assert isinstance(strat, list) and len(strat) == 1
+    row = strat[0]
+    assert row["strategy"] == "momentum"
+    assert row["trades"] == 1
+    assert row["realized_pnl"] > 0  # closed at +30%
+    assert row["win_rate"] == 100.0
+
 
 # --- self-check ------------------------------------------------------------
 def test_selfcheck_returns_structure_without_raising():
