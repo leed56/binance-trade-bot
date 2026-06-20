@@ -1,0 +1,201 @@
+"""Unit tests for the dex_trade_bot package.
+
+These cover the deterministic core that needs no network: cost math, the screener
+gate decisions, risk-manager vetoes, intel scoring bounds, and paper-fill PnL
+accounting against an in-memory SQLite DB.
+"""
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from dex_trade_bot.config import Config
+from dex_trade_bot.database import Database
+from dex_trade_bot.execution.base import all_in_cost_pct, estimate_slippage_pct
+from dex_trade_bot.execution.paper import PaperExecutor
+from dex_trade_bot.intel import scoring
+from dex_trade_bot.risk.manager import RiskManager
+from dex_trade_bot.safety.screener import ScreenResult, Screener
+
+
+class DummyLogger:
+    def info(self, *a, **k):
+        pass
+
+    warning = debug = error = info
+
+
+def make_config(**overrides):
+    for key in list(os.environ):
+        if key in ("EXECUTION_MODE",):
+            del os.environ[key]
+    os.environ["WALLET_ADDRESS"] = "0x0000000000000000000000000000000000000001"
+    os.environ["EXECUTION_MODE"] = "paper"
+    os.environ["DB_PATH"] = "sqlite:///:memory:"
+    cfg = Config()
+    for k, v in overrides.items():
+        setattr(cfg, k, v)
+    return cfg
+
+
+def make_db(cfg):
+    db = Database(DummyLogger(), cfg)
+    db.create_database()
+    return db
+
+
+# --- cost model ------------------------------------------------------------
+def test_slippage_grows_with_size():
+    assert estimate_slippage_pct(10, 100000) < estimate_slippage_pct(1000, 100000)
+
+
+def test_slippage_zero_liquidity_is_max():
+    assert estimate_slippage_pct(10, 0) == 100.0
+
+
+def test_all_in_cost_includes_tax_and_gas():
+    cost = all_in_cost_pct(size_usd=5, liquidity_usd=50000, tax_pct=3.0, gas_usd=0.2)
+    # tax 3% + gas (0.2/5=4%) + small slippage
+    assert cost > 7.0
+
+
+# --- screener --------------------------------------------------------------
+def test_screener_rejects_thin_liquidity():
+    cfg = make_config(MIN_LIQUIDITY_USD=20000)
+    res = Screener(cfg, DummyLogger()).screen("0xabc", liquidity_usd=1000)
+    assert not res.passed
+    assert "liquidity" in res.reason
+
+
+def test_screen_result_shape():
+    r = ScreenResult(True, "ok", 1.0, 2.0)
+    assert r.passed and r.buy_tax_pct == 1.0
+
+
+# --- scoring ---------------------------------------------------------------
+def test_score_bounds():
+    snap = {"liquidity_usd": 50000, "buys_h1": 30, "sells_h1": 10, "volume_h1": 1000,
+            "volume_h24": 12000, "change_h1": 5, "change_h6": 8, "change_h24": 10}
+    out = scoring.score(snap, whale_signal=1.0, mempool_signal=1.0)
+    assert 0.0 <= out["edge_score"] <= 1.0
+    assert 0.0 <= out["confidence"] <= 1.0
+    assert -4.001 <= out["expected_edge_pct"] <= 4.001
+
+
+def test_score_neutral_for_flat_market():
+    snap = {"liquidity_usd": 0, "buys_h1": 0, "sells_h1": 0, "volume_h1": 0,
+            "volume_h24": 0, "change_h1": 0, "change_h6": 0, "change_h24": 0}
+    out = scoring.score(snap)
+    assert out["confidence"] == 0.0
+
+
+# --- risk manager ----------------------------------------------------------
+def test_risk_vetoes_when_edge_below_cost():
+    cfg = make_config()
+    db = make_db(cfg)
+    rm = RiskManager(cfg, db, DummyLogger())
+    candidate = {"token_address": "0xtok", "symbol": "TOK"}
+    d = rm.evaluate_open(candidate, cash_usd=30, expected_edge_pct=1.0, est_cost_pct=5.0)
+    assert not d.approved
+    assert "edge" in d.reason
+
+
+def test_risk_approves_and_caps_size():
+    cfg = make_config(MAX_POSITION_USD=5, MAX_TRADE_PCT=50)
+    db = make_db(cfg)
+    rm = RiskManager(cfg, db, DummyLogger())
+    candidate = {"token_address": "0xtok", "symbol": "TOK"}
+    d = rm.evaluate_open(candidate, cash_usd=30, expected_edge_pct=20.0, est_cost_pct=3.0)
+    assert d.approved
+    assert d.size_usd <= 5.0  # capped by MAX_POSITION_USD
+
+
+def test_daily_loss_stop_halts():
+    cfg = make_config(DAILY_LOSS_STOP_USD=8)
+    db = make_db(cfg)
+    rm = RiskManager(cfg, db, DummyLogger())
+    rm._day_start_realized = 0.0
+    # simulate a realized loss by monkeypatching the db reader
+    db.realized_pnl = lambda: -9.0
+    halted, _ = rm.trading_halted()
+    assert halted
+
+
+# --- paper executor PnL accounting -----------------------------------------
+def test_paper_roundtrip_pnl_with_costs():
+    cfg = make_config()
+    db = make_db(cfg)
+    ex = PaperExecutor(cfg, web3_client=None, pancake=None, database=db, logger=DummyLogger())
+    candidate = {"token_address": "0xtok", "symbol": "TOK"}
+    fill = ex.open_position(candidate, size_usd=5.0, price_usd=1.0, strategy="momentum",
+                            liquidity_usd=100000, buy_tax_pct=1.0)
+    assert fill.success
+    pos = db.get_open_position("0xtok")
+    assert pos is not None
+    # Exit flat: should be a small loss due to gas + tax + slippage both ways.
+    ex.close_position(pos, price_usd=1.0, liquidity_usd=100000, sell_tax_pct=1.0, reason="test")
+    assert db.count_open_positions() == 0
+    assert db.realized_pnl() < 0  # costs make a flat round-trip a loss
+
+
+def test_paper_profit_when_price_rises_enough():
+    cfg = make_config()
+    db = make_db(cfg)
+    ex = PaperExecutor(cfg, web3_client=None, pancake=None, database=db, logger=DummyLogger())
+    candidate = {"token_address": "0xtok2", "symbol": "TOK2"}
+    ex.open_position(candidate, size_usd=5.0, price_usd=1.0, strategy="momentum",
+                     liquidity_usd=1_000_000, buy_tax_pct=0.0)
+    pos = db.get_open_position("0xtok2")
+    ex.close_position(pos, price_usd=2.0, liquidity_usd=1_000_000, sell_tax_pct=0.0, reason="tp")
+    assert db.realized_pnl() > 0
+
+
+# --- orchestrator end-to-end (offline, with fakes) -------------------------
+def _strong_snapshot(addr="0xPIPE", price=1.0):
+    return {"token_address": addr, "symbol": "PIPE", "pair_address": "0xpair", "dex": "pancake",
+            "price_usd": price, "liquidity_usd": 50000, "volume_h24": 2400, "volume_h1": 1000,
+            "change_h1": 5.0, "change_h6": 8.0, "change_h24": 10.0, "buys_h1": 40, "sells_h1": 5,
+            "pair_created_at": 0}
+
+
+def test_orchestrator_full_pipeline(monkeypatch):
+    import types
+
+    from dex_trade_bot import orchestrator as orch_mod
+    from dex_trade_bot.orchestrator import Orchestrator
+    from dex_trade_bot.safety.screener import ScreenResult
+
+    # Larger budget here purely to clear the gas-vs-edge guard and exercise a fill.
+    cfg = make_config(STARTING_BALANCE_USD=100, MAX_POSITION_USD=20, MAX_TRADE_PCT=50,
+                      ENABLED_STRATEGIES=["momentum"])
+    db = make_db(cfg)
+    fake_web3 = types.SimpleNamespace(connected=False, w3=None)
+    wallet = types.SimpleNamespace(address=cfg.WALLET_ADDRESS)
+    pancake = types.SimpleNamespace()
+
+    orch = Orchestrator(cfg, db, fake_web3, wallet, pancake, DummyLogger())
+    orch.trending = types.SimpleNamespace(discover=lambda limit=30: [_strong_snapshot()])
+    orch.new_pairs = types.SimpleNamespace(discover=lambda: [])
+    orch.screener.screen = lambda addr, liq: ScreenResult(True, "ok", 0.0, 0.0)
+
+    # 1) discovery -> screened + scored
+    scored = orch.discover()
+    assert len(scored) == 1
+    assert scored[0]["score"]["edge_score"] >= 0.6
+
+    # 2) strategies -> risk -> paper fill
+    orch.open_trades()
+    assert db.count_open_positions() == 1
+
+    # 3) price doubles -> momentum take-profit closes with a profit
+    monkeypatch.setattr(orch_mod.marketdata, "token_market",
+                        lambda addr: _strong_snapshot(price=2.0))
+    orch.manage_positions()
+    assert db.count_open_positions() == 0
+    assert db.realized_pnl() > 0
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__, "-v"]))

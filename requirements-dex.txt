@@ -1,0 +1,10 @@
+# Dependencies for the autonomous DEX trading bot (dex_trade_bot package).
+# Reuses sqlalchemy/schedule/apprise already pinned in requirements.txt.
+web3==6.20.3
+eth-account==0.11.2
+requests==2.32.3
+websockets==12.0
+python-dotenv==1.0.1
+sqlalchemy==1.4.15
+schedule==1.1.0
+apprise==0.9.5.1
