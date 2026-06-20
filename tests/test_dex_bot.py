@@ -303,5 +303,35 @@ def test_dashboard_endpoints(tmp_path):
     assert client.get("/").status_code == 200
 
 
+# --- self-check ------------------------------------------------------------
+def test_selfcheck_returns_structure_without_raising():
+    from dex_trade_bot import selfcheck
+
+    cfg = make_config()  # paper mode, valid wallet
+    results, ready = selfcheck.run(cfg, DummyLogger())
+    # Always returns a list of structured checks and a bool, even if network is down.
+    assert isinstance(results, list) and results
+    assert all({"name", "ok", "detail", "critical"} <= set(r) for r in results)
+    assert isinstance(ready, bool)
+
+
+def test_selfcheck_flags_missing_wallet_as_not_ready(monkeypatch):
+    from dex_trade_bot import selfcheck
+
+    cfg = make_config()
+    cfg.WALLET_ADDRESS = ""  # critical config problem
+    # Stub network checks so the test is deterministic offline.
+    monkeypatch.setattr(selfcheck, "_check_dexscreener",
+                        lambda: selfcheck._ok("DexScreener (price source)", True, "ok", critical=True))
+    monkeypatch.setattr(selfcheck, "_check_honeypot",
+                        lambda: selfcheck._ok("honeypot.is (safety screen)", True, "ok"))
+    monkeypatch.setattr(selfcheck, "_check_rpc",
+                        lambda c, l: selfcheck._ok("BSC RPC (on-chain)", True, "ok"))
+    monkeypatch.setattr(selfcheck, "_check_binance",
+                        lambda c, l: selfcheck._ok("Binance (CEX, crossarb)", True, "ok"))
+    _, ready = selfcheck.run(cfg, DummyLogger())
+    assert ready is False  # missing wallet is a critical failure
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

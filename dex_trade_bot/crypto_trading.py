@@ -55,7 +55,18 @@ def main(argv=None):
 
     parser = argparse.ArgumentParser(prog="dex_trade_bot")
     parser.add_argument("--once", action="store_true", help="run a single cycle and exit")
+    parser.add_argument("--check", action="store_true",
+                        help="run a pre-flight connectivity & config check and exit")
     args = parser.parse_args(argv)
+
+    if args.check:
+        from .config import Config
+        from .selfcheck import run as run_check
+
+        logger = Logger()
+        config = Config()
+        _, ready = run_check(config, logger)
+        raise SystemExit(0 if ready else 1)
 
     orchestrator, config, logger, _ = build()
 

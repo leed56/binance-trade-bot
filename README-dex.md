@@ -49,9 +49,14 @@ opens/manages/closes positions behind hard risk rails.
 ```bash
 pip install -r requirements-dex.txt
 cp .env.example .env          # set WALLET_ADDRESS (a read-only address is fine for paper)
+python -m dex_trade_bot --check  # pre-flight: what's reachable + is config sane?
 python -m dex_trade_bot --once   # run a single cycle
 python -m dex_trade_bot           # run the full scheduled loop
 ```
+
+`--check` pings the price source (DexScreener), BSC RPC, the safety screener and
+Binance, validates your config, and prints OK/FAIL for each (exit 0 = ready). Run
+it first to confirm everything is reachable before trading.
 
 Paper mode needs no private key and no premium node — a free public BSC RPC and
 DexScreener are enough. It simulates fills with the same gas+tax+slippage cost
